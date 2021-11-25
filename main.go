@@ -40,10 +40,7 @@ allowed_ip=0.0.0.0/0`
 
 func main() {
 	log.Printf("Reading environment variables")
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
+	godotenv.Load()
 	var (
 		privateKey         = DecodeKey(MustGetEnv("WG_PRIVATE_KEY"))
 		publicKey          = DecodeKey(MustGetEnv("WG_PUBLIC_KEY"))
