@@ -1,3 +1,5 @@
+[![Build & Publish Docker Image](https://github.com/shimberger/wg-http-proxy/actions/workflows/docker-image.yml/badge.svg)](https://github.com/shimberger/wg-http-proxy/actions/workflows/docker-image.yml)
+
 # wg-http-proxy
 
 This project hacks together the excellent https://github.com/elazarl/goproxy and https://git.zx2c4.com/wireguard-go into an HTTP proxy server which tunnels requests through wireguard.
