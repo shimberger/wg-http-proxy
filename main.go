@@ -1,12 +1,11 @@
 package main
 
 import (
-	b64 "encoding/base64"
+	"encoding/base64"
 	"encoding/hex"
-	"os"
-
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/elazarl/goproxy"
 	"github.com/joho/godotenv"
@@ -17,7 +16,10 @@ import (
 )
 
 func DecodeKey(s string) string {
-	b, _ := b64.StdEncoding.DecodeString(s)
+	b, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		log.Panicf("Error decoding either private or public key from base64: '%v'", err)
+	}
 	return hex.EncodeToString(b)
 }
 
@@ -29,55 +31,49 @@ func MustGetEnv(s string) string {
 	return v
 }
 
+func GenerateConfig(privateKey, publicKey, endpoint string) string {
+	return `private_key=` + privateKey + `
+public_key=` + publicKey + `
+endpoint=` + endpoint + `
+allowed_ip=0.0.0.0/0`
+}
+
 func main() {
+	log.Printf("Reading environment variables")
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
-
 	var (
-		privateKey       = DecodeKey(MustGetEnv("WG_PRIVATE_KEY"))
-		publicKey        = DecodeKey(MustGetEnv("WG_PUBLIC_KEY"))
-		endpoint         = MustGetEnv("WG_ENDPOINT")
-		localIpV4Address = MustGetEnv("WG_LOCAL_IPV4_ADDRESS")
-		dnsAddress       = MustGetEnv("WG_DNS_ADDRESS")
+		privateKey         = DecodeKey(MustGetEnv("WG_PRIVATE_KEY"))
+		publicKey          = DecodeKey(MustGetEnv("WG_PUBLIC_KEY"))
+		endpoint           = MustGetEnv("WG_ENDPOINT")
+		localIpV4Address   = MustGetEnv("WG_LOCAL_IPV4_ADDRESS")
+		dnsAddress         = MustGetEnv("WG_DNS_ADDRESS")
+		proxyListenAddress = MustGetEnv("PROXY_LISTEN_ADDRESS")
 	)
+	log.Printf("Finished reading configuration")
 
-	tun, tnet, err := netstack.CreateNetTUN(
-		[]netip.Addr{netip.MustParseAddr(localIpV4Address)},
-		[]netip.Addr{netip.MustParseAddr(dnsAddress)},
-		1420)
+	log.Printf("Creating TUN")
+	var (
+		localAddresses = []netip.Addr{netip.MustParseAddr(localIpV4Address)}
+		dnsAddresses   = []netip.Addr{netip.MustParseAddr(dnsAddress)}
+		tunMTU         = 1420
+	)
+	tun, tnet, err := netstack.CreateNetTUN(localAddresses, dnsAddresses, tunMTU)
 	if err != nil {
-		log.Panic(err)
+		log.Panicf("Error creating TUN '%v'", err)
 	}
-	bind := conn.NewStdNetBind()
-	log.Printf("PublicKey '%v'", publicKey)
-	dev := device.NewDevice(tun, bind, device.NewLogger(device.LogLevelError, ""))
-	dev.IpcSet(`private_key=` + privateKey + `
-public_key=` + publicKey + `
-endpoint=` + endpoint + `
-allowed_ip=0.0.0.0/0
-`)
-	dev.Up()
-	/*
-		client := http.Client{
-			Transport: &http.Transport{
-				DialContext: tnet.DialContext,
-			},
-		}
+	log.Printf("TUN created")
 
-			resp, err := client.Get("https://ifconfig.me")
-			if err != nil {
-				log.Panic(err)
-			}
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				log.Panic(err)
-			}
-			log.Println(string(body))
-	*/
+	log.Printf("Setting up wireguard connection")
+	dev := device.NewDevice(tun, conn.NewStdNetBind(), device.NewLogger(device.LogLevelError, ""))
+	dev.IpcSet(GenerateConfig(privateKey, publicKey, endpoint))
+	dev.Up()
+	log.Printf("Connection created")
+
+	log.Printf("Starting proxy server on port %v", proxyListenAddress)
 	proxy := goproxy.NewProxyHttpServer()
-	//proxy.Verbose = true
 	proxy.ConnectDial = tnet.Dial
-	log.Fatal(http.ListenAndServe(":8090", proxy))
+	log.Fatal(http.ListenAndServe(proxyListenAddress, proxy))
 }
