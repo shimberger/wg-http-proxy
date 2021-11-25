@@ -72,5 +72,7 @@ func main() {
 	log.Printf("Starting proxy server on port %v", proxyListenAddress)
 	proxy := goproxy.NewProxyHttpServer()
 	proxy.ConnectDial = tnet.Dial
+	proxy.Tr.Dial = tnet.Dial
+	//proxy.Verbose = true
 	log.Fatal(http.ListenAndServe(proxyListenAddress, proxy))
 }
