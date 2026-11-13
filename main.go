@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"log"
+	"net"
 	"net/http"
 	"os"
 
@@ -48,8 +49,20 @@ func main() {
 		localIpV4Address   = MustGetEnv("WG_LOCAL_IPV4_ADDRESS")
 		dnsAddress         = MustGetEnv("WG_DNS_ADDRESS")
 		proxyListenAddress = MustGetEnv("PROXY_LISTEN_ADDRESS")
+		proxyVerbose       = os.Getenv("PROXY_VERBOSE") == "true"
 	)
 	log.Printf("Finished reading configuration")
+
+	addr := net.ParseIP(endpoint)
+	if addr == nil {
+		ips, err := net.LookupHost(endpoint)
+		if err != nil {
+			log.Fatalf("Error looking up hostname %v: %v", endpoint, err)
+		}
+		addr = net.ParseIP(ips[0])
+	}
+
+	endpoint = addr.String()
 
 	log.Printf("Creating TUN")
 	var (
@@ -73,6 +86,6 @@ func main() {
 	proxy := goproxy.NewProxyHttpServer()
 	proxy.ConnectDial = tnet.Dial
 	proxy.Tr.Dial = tnet.Dial
-	//proxy.Verbose = true
+	proxy.Verbose = proxyVerbose
 	log.Fatal(http.ListenAndServe(proxyListenAddress, proxy))
 }
