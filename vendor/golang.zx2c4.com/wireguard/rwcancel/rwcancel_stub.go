@@ -1,10 +1,9 @@
-//go:build windows || js
+//go:build windows || wasm
 
 // SPDX-License-Identifier: MIT
 
 package rwcancel
 
-type RWCancel struct {
-}
+type RWCancel struct{}
 
 func (*RWCancel) Cancel() {}

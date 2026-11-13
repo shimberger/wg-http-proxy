@@ -10,10 +10,9 @@ import (
 
 	"github.com/elazarl/goproxy"
 	"github.com/joho/godotenv"
-	"golang.zx2c4.com/go118/netip"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
-	"golang.zx2c4.com/wireguard/tun/netstack"
+	"golang.zx2c4.com/wireguard/tun"
 )
 
 func DecodeKey(s string) string {
@@ -46,46 +45,41 @@ func main() {
 		privateKey         = DecodeKey(MustGetEnv("WG_PRIVATE_KEY"))
 		publicKey          = DecodeKey(MustGetEnv("WG_PUBLIC_KEY"))
 		endpoint           = MustGetEnv("WG_ENDPOINT")
-		localIpV4Address   = MustGetEnv("WG_LOCAL_IPV4_ADDRESS")
-		dnsAddress         = MustGetEnv("WG_DNS_ADDRESS")
 		proxyListenAddress = MustGetEnv("PROXY_LISTEN_ADDRESS")
 		proxyVerbose       = os.Getenv("PROXY_VERBOSE") == "true"
 	)
 	log.Printf("Finished reading configuration")
 
-	addr := net.ParseIP(endpoint)
+	host, port, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		log.Panicf("Error parsing endpoint '%v': %v", endpoint, err)
+	}
+	addr := net.ParseIP(host)
 	if addr == nil {
-		ips, err := net.LookupHost(endpoint)
+		ips, err := net.LookupHost(host)
 		if err != nil {
-			log.Fatalf("Error looking up hostname %v: %v", endpoint, err)
+			log.Fatalf("Error looking up hostname %v: %v", host, err)
 		}
 		addr = net.ParseIP(ips[0])
 	}
 
-	endpoint = addr.String()
+	endpoint = net.JoinHostPort(addr.String(), port)
 
 	log.Printf("Creating TUN")
-	var (
-		localAddresses = []netip.Addr{netip.MustParseAddr(localIpV4Address)}
-		dnsAddresses   = []netip.Addr{netip.MustParseAddr(dnsAddress)}
-		tunMTU         = 1420
-	)
-	tun, tnet, err := netstack.CreateNetTUN(localAddresses, dnsAddresses, tunMTU)
+	wgTun, err := tun.CreateTUN("wg-http-proxy", 1420)
 	if err != nil {
 		log.Panicf("Error creating TUN '%v'", err)
 	}
 	log.Printf("TUN created")
 
 	log.Printf("Setting up wireguard connection")
-	dev := device.NewDevice(tun, conn.NewStdNetBind(), device.NewLogger(device.LogLevelError, ""))
+	dev := device.NewDevice(wgTun, conn.NewStdNetBind(), device.NewLogger(device.LogLevelError, ""))
 	dev.IpcSet(GenerateConfig(privateKey, publicKey, endpoint))
 	dev.Up()
 	log.Printf("Connection created")
 
 	log.Printf("Starting proxy server on port %v", proxyListenAddress)
 	proxy := goproxy.NewProxyHttpServer()
-	proxy.ConnectDial = tnet.Dial
-	proxy.Tr.Dial = tnet.Dial
 	proxy.Verbose = proxyVerbose
 	log.Fatal(http.ListenAndServe(proxyListenAddress, proxy))
 }
