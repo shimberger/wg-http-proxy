@@ -108,9 +108,11 @@ func main() {
 	if err != nil {
 		log.Panicf("WireGuard state error: %v", err)
 	}
-	err = testWireGuard(wgTestendpoint, tnet, 5*time.Second)
-	if err != nil {
-		log.Panicf("WireGuard test error: %v", err)
+	if wgTestendpoint != "" {
+		err = testWireGuard(wgTestendpoint, tnet, 5*time.Second)
+		if err != nil {
+			log.Panicf("WireGuard test error: %v", err)
+		}
 	}
 	log.Printf("Connection created")
 
@@ -119,9 +121,11 @@ func main() {
 	proxy.ConnectDial = tnet.Dial
 	proxy.Tr.Dial = tnet.Dial
 	proxy.Verbose = verboseLogging
-	err = testProxyConnection(proxy, proxyTestUrl, 5*time.Second)
-	if err != nil {
-		log.Panicf("Proxy test error: %v", err)
+	if proxyTestUrl != "" {
+		err = testProxyConnection(proxy, proxyTestUrl, 5*time.Second)
+		if err != nil {
+			log.Panicf("Proxy test error: %v", err)
+		}
 	}
 	log.Fatal(http.ListenAndServe(proxyListenAddress, proxy))
 }
